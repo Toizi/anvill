@@ -53,6 +53,8 @@ add_library(anvill STATIC
 
   include/anvill/Util.h
   src/Util.cpp
+
+  src/PointerLifter.cpp
 )
 
 appendRemillVersionToTargetOutputName(anvill)
