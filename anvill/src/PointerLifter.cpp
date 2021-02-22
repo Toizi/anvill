@@ -12,6 +12,10 @@ class PointerLifter {
     public:
         PointerLifter(llvm::Module& mod): module(mod) {}
 
+        // ReplaceAllUses - swaps uses of LLVM inst with other LLVM inst 
+        // Adds users to the next worklist, for downstream type propagation 
+        void ReplaceAllUses(llvm::Value* orig_inst, llvm::Value* new_inst);
+
         // We need to get a pointer from some value  
         [[nodiscard]] llvm::Value * getPointerToValue(llvm::IRBuilder<> &ir, llvm::Value * curr_val, llvm::Type* dest_type);
         
@@ -38,7 +42,6 @@ class PointerLifter {
         */
         
     private:
-        std::unordered_map<llvm::Value*, llvm::Value*> updated_values;
         std::vector<llvm::Instruction*> next_worklist;
         llvm::Module& module;
 
@@ -50,6 +53,21 @@ class PointerLifter {
     // is the value another instruction? Visit it 
     return ir.CreateBitOrPointerCast(val, dest_type);
 }
+
+llvm::Value* PointerLifter::GetIndexedPointer(llvm::Value* address, llvm::Value* offset) {
+
+}
+
+void PointerLifter::ReplaceAllUses(llvm::Value *old_val, llvm::Value *new_val) {
+  DCHECK(!llvm::isa<llvm::Constant>(old_val));
+  for (auto user : old_val->users()) {
+    if (auto inst = llvm::dyn_cast<llvm::Instruction>(user)) {
+      next_worklist.push_back(inst);
+    }
+  }
+  old_val->replaceAllUsesWith(new_val);
+}
+
 
 /*
 inttoptr instructions indicate there are pointers. There are two cases:
@@ -70,14 +88,9 @@ llvm::Value* PointerLifter::visitIntToPtrInst(llvm::IntToPtrInst* inst, llvm::Ty
         // Propagate that type upto the original register containing the value
         // Create an entry in updated val with pointer cast.
         llvm::Value * new_ptr = visit(pointer_inst, dest_type);
-        updated_values[inst] = new_ptr;
+        ReplaceAllUses(inst, new_ptr);
         return new_ptr;
     }
-}
-
-
-llvm::Value* PointerLifter::GetIndexedPointer(llvm::Value* address, llvm::Value* offset) {
-
 }
 
 /*
@@ -147,7 +160,7 @@ llvm::Value* PointerLifter::visitBinaryOperator(llvm::BinaryOperator* inst, llvm
                  << bb->getParent()->getName().str();
 
       llvm::Value * new_pointer = ir.CreateIntToPtr(inst, inferred_type);
-      updated_values[inst] = new_pointer;
+      ReplaceAllUses(inst, new_pointer);
     }
 
     // If neither of them are known pointers, then we have some inference to propagate!
@@ -165,7 +178,7 @@ llvm::Value* PointerLifter::visitBinaryOperator(llvm::BinaryOperator* inst, llvm
             // Create the GEP/Indexed pointer
             llvm::Value* indexed_pointer = GetIndexedPointer(lhs_inst, rhs_const);
             // Mark as updated 
-            updated_values[inst] = indexed_pointer;
+            ReplaceAllUses(inst, indexed_pointer);
             return indexed_pointer;
         }
         // Same but for RHS
@@ -175,7 +188,7 @@ llvm::Value* PointerLifter::visitBinaryOperator(llvm::BinaryOperator* inst, llvm
             CHECK_NE(lhs_const, nullptr);
             CHECK_EQ(lhs_inst, nullptr);
             llvm::Value* indexed_pointer = GetIndexedPointer(rhs_inst, lhs_const);
-            updated_values[inst] = indexed_pointer;
+            ReplaceAllUses(inst, indexed_pointer);
             return indexed_pointer;
         }
         // We know there is some pointer info, but they are both consts? 
@@ -183,7 +196,7 @@ llvm::Value* PointerLifter::visitBinaryOperator(llvm::BinaryOperator* inst, llvm
             // We don't have a L/RHS instruction, just create a pointer
             llvm::IRBuilder ir(inst->getNextNode());
             llvm::Value* add_ptr = ir.CreateIntToPtr(inst, inferred_type);
-            updated_values[inst] = add_ptr;
+            ReplaceAllUses(inst, add_ptr);
             return add_ptr;
         }
     }
@@ -191,7 +204,7 @@ llvm::Value* PointerLifter::visitBinaryOperator(llvm::BinaryOperator* inst, llvm
     // we want to try and propagate as much as we can. 
     llvm::IRBuilder ir(inst->getNextNode());
     llvm::Value* default_cast = ir.CreateBitCast(inst, inferred_type);
-    updated_values[inst] = default_cast;
+    ReplaceAllUses(inst, default_cast);
     return default_cast;
 }
 /*
