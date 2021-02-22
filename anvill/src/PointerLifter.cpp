@@ -17,28 +17,20 @@ class PointerLifter {
         
         // These visitor methods indicate that we know about pointer information to propagate
         // Some are maybes, because not all cast instructions are casts to pointers. 
-        [[nodiscard]] llvm::Value* visitIntToPtrInst(llvm::IntToPtrInst *inst, llvm::Type* inferred_type,
-            std::vector<llvm::Instruction*>& next_worklist);
-        [[nodiscard]] llvm::Value* visitPtrToIntInst(llvm::PtrToIntInst *inst, llvm::Type* inferred_type,
-            std::vector<llvm::Instruction*>& next_worklist);
-        [[nodiscard]] llvm::Value* visitGetElementPtrInst(llvm::GetElementPtrInst *inst, llvm::Type* inferred_type,
-            std::vector<llvm::Instruction*>& next_worklist);
-        [[nodiscard]] llvm::Value* visitBitCastInst(llvm::BitCastInst *inst, llvm::Type* inferred_type, 
-            std::vector<llvm::Instruction*>& next_worklist);
+        [[nodiscard]] llvm::Value* visitIntToPtrInst(llvm::IntToPtrInst *inst, llvm::Type* inferred_type);
+        [[nodiscard]] llvm::Value* visitPtrToIntInst(llvm::PtrToIntInst *inst, llvm::Type* inferred_type);
+        [[nodiscard]] llvm::Value* visitGetElementPtrInst(llvm::GetElementPtrInst *inst, llvm::Type* inferred_type);
+        [[nodiscard]] llvm::Value* visitBitCastInst(llvm::BitCastInst *inst, llvm::Type* inferred_type);
         [[nodiscard]] llvm::Value* visitCastInst(llvm::CastInst *inst, llvm::Type* inferred_type);
-        [[nodiscard]] llvm::Value* PointerLifter::GetIndexedPointer(llvm::Value* address, llvm::Value* offset, 
-            std::vector<llvm::Instruction*>& next_worklist);
+        [[nodiscard]] llvm::Value* PointerLifter::GetIndexedPointer(llvm::Value* address, llvm::Value* offset);
 
         // Other funcs
-        [[nodiscard]] llvm::Value* visitBinaryOperator(llvm::BinaryOperator* inst, llvm::Type* inferred_type, 
-            std::vector<llvm::Instruction*>& next_worklist);
-
-        [[nodiscard]] llvm::Value* visit(llvm::Instruction *inst, llvm::Type* inferred_type, 
-            std::vector<llvm::Instruction*>& next_worklist);
+        [[nodiscard]] llvm::Value* visitBinaryOperator(llvm::BinaryOperator* inst, llvm::Type* inferred_type);
+        [[nodiscard]] llvm::Value* visit(llvm::Instruction *inst, llvm::Type* inferred_type);
 
         // Driver method 
         void LiftFunction(llvm::Function* func);
-        // TODO (Carson) add visit call?
+
         /*
         // TODO (Carson)
         if you see an intoptr on a load, then you'll want to rewrite the load to be a load on a bitcast
@@ -47,6 +39,7 @@ class PointerLifter {
         
     private:
         std::unordered_map<llvm::Value*, llvm::Value*> updated_values;
+        std::vector<llvm::Instruction*> next_worklist;
         llvm::Module& module;
 
 };
@@ -69,21 +62,21 @@ inttoptr instructions indicate there are pointers. There are two cases:
 In the first case, only %X is a pointer, this should already be known by the compiler 
 In the second case, it indicates that %Y although of type integer, has been a pointer
 */
-llvm::Value* PointerLifter::visitIntToPtrInst(llvm::IntToPtrInst* inst, llvm::Type* inferred_type, std::vector<llvm::Instruction*>& next_worklist) {
+llvm::Value* PointerLifter::visitIntToPtrInst(llvm::IntToPtrInst* inst, llvm::Type* inferred_type) {
     llvm::Value* pointer_operand = inst->getOperand(0);
     if (auto pointer_inst = llvm::dyn_cast<llvm::Instruction>(pointer_operand); pointer_inst) {
         // This is the inferred type
         llvm::Type* dest_type = inst->getDestTy();
         // Propagate that type upto the original register containing the value
         // Create an entry in updated val with pointer cast.
-        llvm::Value * new_ptr = visit(pointer_inst, dest_type, next_worklist);
+        llvm::Value * new_ptr = visit(pointer_inst, dest_type);
         updated_values[inst] = new_ptr;
         return new_ptr;
     }
 }
 
 
-llvm::Value* PointerLifter::GetIndexedPointer(llvm::Value* address, llvm::Value* offset, std::vector<llvm::Instruction*>& next_worklist) {
+llvm::Value* PointerLifter::GetIndexedPointer(llvm::Value* address, llvm::Value* offset) {
 
 }
 
@@ -130,7 +123,7 @@ and optimizations are applied we are left with
 %B_GEP = i32* GEP %A_PTR <indexes>
 
 */
-llvm::Value* PointerLifter::visitBinaryOperator(llvm::BinaryOperator* inst, llvm::Type* inferred_type, std::vector<llvm::Instruction*>& next_worklist) {
+llvm::Value* PointerLifter::visitBinaryOperator(llvm::BinaryOperator* inst, llvm::Type* inferred_type) {
     // Adds by themselves do not infer pointer info
     if (inferred_type != nullptr) {
         return;
@@ -163,25 +156,25 @@ llvm::Value* PointerLifter::visitBinaryOperator(llvm::BinaryOperator* inst, llvm
         auto rhs_inst = llvm::dyn_cast<llvm::Instruction>(rhs_op);
         if (lhs_inst) {
             // visit it! propagate type information. 
-            llvm::Value* ptr_val = visit(lhs_inst, inferred_type, next_worklist);
+            llvm::Value* ptr_val = visit(lhs_inst, inferred_type);
             // ^ should be in updated vals. Next create an indexed pointer
             // This could be a GEP, but in some cases might just be a bitcast.
             auto rhs_const = llvm::dyn_cast<llvm::ConstantInt>(rhs_op);
             CHECK_NE(rhs_const, nullptr);
             CHECK_EQ(rhs_inst, nullptr);
             // Create the GEP/Indexed pointer
-            llvm::Value* indexed_pointer = GetIndexedPointer(lhs_inst, rhs_const, next_worklist);
+            llvm::Value* indexed_pointer = GetIndexedPointer(lhs_inst, rhs_const);
             // Mark as updated 
             updated_values[inst] = indexed_pointer;
             return indexed_pointer;
         }
         // Same but for RHS
         else if (rhs_inst) {
-            llvm::Value* ptr_val = visit(rhs_inst, inferred_type, next_worklist);
+            llvm::Value* ptr_val = visit(rhs_inst, inferred_type);
             auto lhs_const = llvm::dyn_cast<llvm::ConstantInt>(lhs_op);
             CHECK_NE(lhs_const, nullptr);
             CHECK_EQ(lhs_inst, nullptr);
-            llvm::Value* indexed_pointer = GetIndexedPointer(rhs_inst, lhs_const, next_worklist);
+            llvm::Value* indexed_pointer = GetIndexedPointer(rhs_inst, lhs_const);
             updated_values[inst] = indexed_pointer;
             return indexed_pointer;
         }
@@ -219,7 +212,7 @@ void PointerLifter::LiftFunction(llvm::Function* func) {
     }
     do {
         for (auto inst: worklist) {
-            visit(inst, nullptr, next_worklist);
+            visit(inst, nullptr);
         }
         worklist.swap(next_worklist);
         next_worklist.clear();
