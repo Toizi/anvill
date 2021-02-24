@@ -4,6 +4,8 @@
 #include <llvm/IR/Module.h>
 #include <llvm/IRReader/IRReader.h>
 #include <llvm/Support/SourceMgr.h>
+#include <fstream>
+#include <iostream>
 
 #include "anvill/PointerLifter.h"
 
@@ -40,6 +42,6 @@ int main(int argc, char *argv[]) {
           pointer_lifter.LiftFunction(&func);
       }
   }
-  
+  mod->print(llvm::errs(), nullptr);
   return 0;
 }

@@ -8,6 +8,22 @@
 
 namespace anvill {
 
+// We can use the inferred type information to simplify constant expressions too
+class ConstExprVisitor {
+    public:
+        llvm::Value* visitConstantInt(llvm::ConstantInt* constant_int, llvm::Type* inferred_type);
+        llvm::Value* visitConstantExpr(llvm::ConstantExpr* const_expr, llvm::Type* inferred_type);
+        llvm::Value* visit(llvm::Constant* c, llvm::Type* inferred_type);
+};
+
+llvm::Value* ConstExprVisitor::visitConstantInt(llvm::ConstantInt* ci, llvm::Type* inferred_type) {    
+    return ci;
+}
+
+llvm::Value* ConstExprVisitor::visit(llvm::Constant *c, llvm::Type* inferred_type) {
+    LOG(ERROR) << "Known constant? " << remill::LLVMThingToString(c) << "\n";
+    return c;
+}
 
 // Creates a cast of val to a dest type. 
 // This casts whatever value we want to a pointer, propagating the information
@@ -24,8 +40,92 @@ llvm::Value* PointerLifter::visitInferInst(llvm::Instruction * inst, llvm::Type*
 // TODO (Carson) today
 // TODO (Carson) try and compile, merge into the rest of optimize. Merge with master?
 // TOOD (Carson) test it, once it works, start filling out the other functions.
-llvm::Value* PointerLifter::GetIndexedPointer(llvm::Value* address, llvm::Value* offset) {
-    return nullptr;
+llvm::Value* PointerLifter::GetIndexedPointer(llvm::IRBuilder<>& ir, llvm::Value* address, llvm::Value* offset, llvm::Type* dest_type) {
+    auto &context = module.getContext();
+  const auto &dl = module.getDataLayout();
+  auto i32_ty = llvm::Type::getInt32Ty(context);
+  auto i8_ty = llvm::Type::getInt8Ty(context);
+  auto i8_ptr_ty = i8_ty->getPointerTo();
+  // TODO (Carson) the addr_space is  actually for thread stuff 
+  //auto i8_ptr_ty = llvm::PointerType::get(i8_ty, addr_space);
+
+  if (auto rhs_const = llvm::dyn_cast<llvm::ConstantInt>(offset)) {
+                LOG(ERROR) << "Indexed Pointer, RHS const\n";
+
+    const auto rhs_index = static_cast<int32_t>(rhs_const->getSExtValue());
+
+    const auto [new_lhs, index] =
+        remill::StripAndAccumulateConstantOffsets(dl, address);
+
+    llvm::GlobalVariable *lhs_global =
+        llvm::dyn_cast<llvm::GlobalVariable>(new_lhs);
+
+    if (lhs_global) {
+                        LOG(ERROR) << "Indexed Pointer, LHS global\n";
+
+      if (!index) {
+        return ir.CreateBitCast(lhs_global, dest_type);
+      }
+
+      // It's a global variable not associated with a native segment, try to
+      // index into it in a natural-ish way. We only apply this when the index
+      // is positive.
+      if (0 < index) {
+        auto offset = static_cast<uint64_t>(index);
+        return remill::BuildPointerToOffset(ir, lhs_global, offset, dest_type);
+      }
+    }
+
+    auto lhs_elem_type = address->getType()->getPointerElementType();
+    auto dest_elem_type = dest_type->getPointerElementType();
+
+    const auto lhs_el_size = dl.getTypeAllocSize(lhs_elem_type);
+    const auto dest_el_size = dl.getTypeAllocSize(dest_elem_type);
+
+    llvm::Value *ptr = nullptr;
+
+    // If either the source or destination element size is divisible by the
+    // other then we might get lucky and be able to compute a pointer to the
+    // destination with a single GEP.
+    if (!(lhs_el_size % dest_el_size) || !(dest_el_size % lhs_el_size)) {
+
+      if (0 > rhs_index) {
+        const auto pos_rhs_index = static_cast<unsigned>(-rhs_index);
+        if (!(pos_rhs_index % lhs_el_size)) {
+          const auto scaled_index = static_cast<uint64_t>(
+              rhs_index / static_cast<int64_t>(lhs_el_size));
+          llvm::Value *indices[1] = {
+              llvm::ConstantInt::get(i32_ty, scaled_index, true)};
+          ptr = ir.CreateGEP(lhs_elem_type, address, indices);
+        }
+      } else {
+        const auto pos_rhs_index = static_cast<unsigned>(rhs_index);
+        if (!(pos_rhs_index % lhs_el_size)) {
+          const auto scaled_index = static_cast<uint64_t>(
+              rhs_index / static_cast<int64_t>(lhs_el_size));
+          llvm::Value *indices[1] = {
+              llvm::ConstantInt::get(i32_ty, scaled_index, false)};
+          ptr = ir.CreateGEP(lhs_elem_type, address, indices);
+        }
+      }
+    }
+
+    // We got a GEP for the dest, now make sure it's the right type.
+    if (ptr) {
+          LOG(ERROR) << "Indexed Pointer, checking types!\n";
+
+      if (address->getType() == dest_type) {
+        return ptr;
+      } else {
+        return ir.CreateBitCast(ptr, dest_type);
+      }
+    }
+  }
+  LOG(ERROR) << "Indexed Pointer, treating as byte array?\n";
+  auto base = ir.CreateBitCast(address, i8_ptr_ty);
+  llvm::Value *indices[1] = {ir.CreateTrunc(offset, i32_ty)};
+  auto gep = ir.CreateGEP(i8_ty, base, indices);
+  return ir.CreateBitCast(gep, dest_type);
 }
 
 // MUST have an implementation of this if llvm:InstVisitor retun type is not void.
@@ -49,6 +149,8 @@ void PointerLifter::ReplaceAllUses(llvm::Value *old_val, llvm::Value *new_val) {
       next_worklist.push_back(inst);
     }
   }
+  llvm::Instruction* old_inst = llvm::dyn_cast<llvm::Instruction>(old_val);
+  to_remove.insert(old_inst);
   old_val->replaceAllUsesWith(new_val);
 }
 
@@ -80,6 +182,8 @@ llvm::Value* PointerLifter::visitIntToPtrInst(llvm::IntToPtrInst& inst) {
     return &inst;
 }
 
+// TODO (Carson) change func name, its not a true visitor. 
+// This function recursively iterates through a constant expression until it hits a constant int, 
 llvm::ConstantExpr * PointerLifter::visitConstantExpr(llvm::ConstantExpr& constant_expr) {
     
 }
@@ -105,7 +209,9 @@ llvm::Value* PointerLifter::visitLoadInst(llvm::LoadInst& inst) {
     if (llvm::ConstantExpr* const_expr = llvm::dyn_cast<llvm::ConstantExpr>(inst.getOperand(0))) {
         LOG(ERROR) << "Load operand is a constant expression! " << remill::LLVMThingToString(const_expr) << "\n";
         // TODO (Carson) create constant expression handler?
-        return &inst;
+        // If we have a constant expression, thats okay. This is going to be our original 
+        ReplaceAllUses(&inst, const_expr);
+        return const_expr;
     }
     return &inst;
 }
@@ -162,6 +268,7 @@ llvm::Value* PointerLifter::visitBinaryOperator(llvm::BinaryOperator& inst) {
     // If we are coming from downstream, then we have an inferred type.
     const auto lhs_op = inst.getOperand(0);
     const auto rhs_op = inst.getOperand(1);
+    // TODO Change to isPtrType()
     auto lhs_ptr = llvm::dyn_cast<llvm::PtrToIntInst>(lhs_op);
     auto rhs_ptr = llvm::dyn_cast<llvm::PtrToIntInst>(rhs_op);
 
@@ -196,7 +303,8 @@ llvm::Value* PointerLifter::visitBinaryOperator(llvm::BinaryOperator& inst) {
             //CHECK_NE(rhs_const, nullptr);
             //CHECK_EQ(rhs_inst, nullptr);
             // Create the GEP/Indexed pointer
-            llvm::Value* indexed_pointer = GetIndexedPointer(ptr_val, rhs_const);
+            llvm::IRBuilder ir(lhs_inst->getNextNode());
+            llvm::Value* indexed_pointer = GetIndexedPointer(ir, ptr_val, rhs_const, inferred_type);
             // Mark as updated 
             ReplaceAllUses(&inst, indexed_pointer);
             return indexed_pointer;
@@ -208,7 +316,8 @@ llvm::Value* PointerLifter::visitBinaryOperator(llvm::BinaryOperator& inst) {
             auto lhs_const = llvm::dyn_cast<llvm::ConstantInt>(lhs_op);
             //CHECK_NE(lhs_const, nullptr);
             //CHECK_EQ(lhs_inst, nullptr);
-            llvm::Value* indexed_pointer = GetIndexedPointer(ptr_val, lhs_const);
+            llvm::IRBuilder ir(rhs_inst->getNextNode());
+            llvm::Value* indexed_pointer = GetIndexedPointer(ir, ptr_val, lhs_const,inferred_type);
             ReplaceAllUses(&inst, indexed_pointer);
             return indexed_pointer;
         }
@@ -251,6 +360,10 @@ void PointerLifter::LiftFunction(llvm::Function* func) {
     do {
         for (auto inst: worklist) {
             visit(inst);
+        }
+        for (auto& inst : to_remove) {
+            CHECK_EQ(inst->getNumUses(), 0);
+            inst->eraseFromParent();
         }
         worklist.swap(next_worklist);
         next_worklist.clear();

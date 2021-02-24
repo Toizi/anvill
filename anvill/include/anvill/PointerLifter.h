@@ -7,6 +7,8 @@
 
 #include <algorithm>
 #include <unordered_map>
+#include <unordered_set>
+
 
 namespace anvill {
 
@@ -34,7 +36,7 @@ class PointerLifter : public llvm::InstVisitor<PointerLifter, llvm::Value *> {
   // Simple wrapper for storing the type information into the list, and then calling visit.
   llvm::Value *visitInferInst(llvm::Instruction *inst,
                               llvm::Type *inferred_type);
-  llvm::Value *GetIndexedPointer(llvm::Value *address, llvm::Value *offset);
+  llvm::Value *GetIndexedPointer(llvm::IRBuilder<>& ir, llvm::Value *address, llvm::Value *offset, llvm::Type* t);
   llvm::Value *visitInstruction(llvm::Instruction &I);
   // Other funcs
   llvm::Value *visitBinaryOperator(llvm::BinaryOperator &inst);
@@ -51,6 +53,7 @@ class PointerLifter : public llvm::InstVisitor<PointerLifter, llvm::Value *> {
  private:
   std::unordered_map<llvm::Value *, llvm::Type *> inferred_types;
   std::vector<llvm::Instruction *> next_worklist;
+  std::unordered_set<llvm::Instruction*> to_remove;
   llvm::Module &module;
 };
 
