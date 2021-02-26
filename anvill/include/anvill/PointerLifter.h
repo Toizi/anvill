@@ -12,7 +12,7 @@
 
 namespace anvill {
 
-class PointerLifter : public llvm::InstVisitor<PointerLifter, llvm::Value *> {
+class PointerLifter : public llvm::InstVisitor<PointerLifter, std::pair<llvm::Value *, bool>> {
  public:
   PointerLifter(llvm::Module &mod) : module(mod) {}
 
@@ -26,21 +26,19 @@ class PointerLifter : public llvm::InstVisitor<PointerLifter, llvm::Value *> {
 
   // These visitor methods indicate that we know about pointer information to propagate
   // Some are maybes, because not all cast instructions are casts to pointers.
-  llvm::Value *visitIntToPtrInst(llvm::IntToPtrInst &inst);
-  llvm::Value *visitLoadInst(llvm::LoadInst &inst);
-  llvm::ConstantExpr *visitConstantExpr(llvm::ConstantExpr &c);
-  //llvm::Value *visitPtrToIntInst(llvm::PtrToIntInst &inst);
-  //llvm::Value *visitGetElementPtrInst(llvm::GetElementPtrInst &inst);
-  //llvm::Value *visitBitCastInst(llvm::BitCastInst &inst);
-  //llvm::Value *visitCastInst(llvm::CastInst &inst);
+  std::pair<llvm::Value*, bool> visitIntToPtrInst(llvm::IntToPtrInst &inst);
+  std::pair<llvm::Value*, bool> visitLoadInst(llvm::LoadInst &inst);
+  //std::pair<llvm::Value*, bool>visitPtrToIntInst(llvm::PtrToIntInst &inst);
+  std::pair<llvm::Value*, bool> visitGetElementPtrInst(llvm::GetElementPtrInst &inst);
+  std::pair<llvm::Value*, bool> visitBitCastInst(llvm::BitCastInst &inst);
+  //std::pair<llvm::Value*, bool>visitCastInst(llvm::CastInst &inst);
   // Simple wrapper for storing the type information into the list, and then calling visit.
-  llvm::Value *visitInferInst(llvm::Instruction *inst,
+  std::pair<llvm::Value*, bool> visitInferInst(llvm::Instruction *inst,
                               llvm::Type *inferred_type);
-  llvm::Value *GetIndexedPointer(llvm::IRBuilder<>& ir, llvm::Value *address, llvm::Value *offset, llvm::Type* t);
-  llvm::Value *visitInstruction(llvm::Instruction &I);
-  // Other funcs
-  llvm::Value *visitBinaryOperator(llvm::BinaryOperator &inst);
+  std::pair<llvm::Value*, bool> visitInstruction(llvm::Instruction &I);
+  std::pair<llvm::Value*, bool> visitBinaryOperator(llvm::BinaryOperator &inst);
 
+  llvm::Value* GetIndexedPointer(llvm::IRBuilder<>& ir, llvm::Value *address, llvm::Value *offset, llvm::Type* t);
   // Driver method
   void LiftFunction(llvm::Function *func);
 
@@ -54,6 +52,7 @@ class PointerLifter : public llvm::InstVisitor<PointerLifter, llvm::Value *> {
   std::unordered_map<llvm::Value *, llvm::Type *> inferred_types;
   std::vector<llvm::Instruction *> next_worklist;
   std::unordered_set<llvm::Instruction*> to_remove;
+  std::vector<std::pair<llvm::Instruction*, llvm::Value*>> to_replace;
   llvm::Module &module;
 };
 
