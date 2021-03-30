@@ -19,6 +19,7 @@
 
 #include <anvill/Decl.h>
 #include <anvill/Lifters/Options.h>
+#include <anvill/Providers/IControlFlowProvider.h>
 #include <llvm/IR/CallingConv.h>
 #include <remill/BC/InstructionLifter.h>
 #include <remill/BC/IntrinsicTable.h>
@@ -53,8 +54,8 @@ class FunctionLifter {
   ~FunctionLifter(void);
 
   FunctionLifter(const LifterOptions &options_,
-                 MemoryProvider &memory_provider_,
-                 TypeProvider &type_provider_);
+                 MemoryProvider &memory_provider_, TypeProvider &type_provider_,
+                 const Program &program);
 
   // Declare a lifted a function. Will return `nullptr` if the memory is
   // not accessible or executable.
@@ -78,6 +79,7 @@ class FunctionLifter {
   const LifterOptions options;
   MemoryProvider &memory_provider;
   TypeProvider &type_provider;
+  IControlFlowProvider::Ptr control_flow_provider;
 
   // Semantics module containing all instruction semantics.
   std::unique_ptr<llvm::Module> semantics_module;
@@ -155,6 +157,10 @@ class FunctionLifter {
   // instruction at `addr`, we enqueue a bit of work to decode and lift that
   // instruction.
   llvm::BasicBlock *GetOrCreateBlock(uint64_t addr);
+
+  // Wrapper for GetOrCreateBlock that makes use of the control flow
+  // provider to do thunk redirection
+  llvm::BasicBlock *GetOrCreateTargetBlock(uint64_t addr);
 
   // The following `Visit*` methods exist to orchestrate control flow. The way
   // lifting works in Remill is that the mechanics of an instruction are

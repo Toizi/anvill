@@ -42,6 +42,12 @@ struct ByteRange {
   bool is_executable{false};
 };
 
+// A list of target addresses, used for control flow redirections
+using TargetList = std::vector<std::uint64_t>;
+
+// An optional list of target addresses for control flow redirections
+using OptionalTargetList = std::optional<TargetList>;
+
 class Program;
 struct ByteSequence;
 
@@ -238,6 +244,29 @@ class Program {
   void ForEachFunctionWithName(
       const std::string &name,
       std::function<bool(const FunctionDecl *)> callback) const;
+
+  // Returns a possible control flow redirection for the given address
+  // or the input address itself if nothing is found
+  bool GetControlFlowRedirection(std::uint64_t &destination,
+                                 std::uint64_t address) const;
+
+  // Adds a new control flow redirection entry
+  void AddControlFlowRedirection(std::uint64_t from, std::uint64_t to);
+
+  // TODO(alessandro): Delete this method
+  // Returns a list of targets for the instruction located at the specified
+  // address
+  OptionalTargetList GetControlFlowTargetList(std::uint64_t address) const;
+
+  // TODO(alessandro): Delete this method
+  // Adds a new control flow target for the instruction located at the
+  // address `from`
+  void AddControlFlowTarget(std::uint64_t from, std::uint64_t to);
+
+  // TODO(alessandro): Delete this method
+  // Adds a list of control flow targets for the instruction located at the
+  // address `from`
+  void AddControlFlowTargetList(std::uint64_t from, const TargetList &to);
 
   // Add a name to an address.
   void AddNameToAddress(const std::string &name, uint64_t address) const;

@@ -33,6 +33,8 @@ class Program(object):
         self._var_decls = {}
         self._func_defs = {}
         self._func_decls = {}
+        self._control_flow_targets = {}
+        self._control_flow_redirections = {}
         self._symbols = collections.defaultdict(set)
 
     def get_symbols(self, ea):
@@ -123,6 +125,20 @@ class Program(object):
         else:
             return False
 
+    def add_control_flow_target(self, source_ea, destination_ea):
+        if source_ea not in self._control_flow_targets:
+            self._control_flow_targets[source_ea] = []
+
+        self._control_flow_targets[source_ea].append(destination_ea)
+        return True
+
+    def add_control_flow_redirection(self, source_ea, destination_ea):
+        if source_ea in self._control_flow_redirections:
+            return False
+
+        self._control_flow_redirections[source_ea] = destination_ea
+        return True
+
     def try_add_referenced_entity(self, ea, add_refs_as_defs=False):
         if add_refs_as_defs:
             try:
@@ -148,10 +164,15 @@ class Program(object):
         return self._memory
 
     def proto(self):
+        # TODO: REMOVE THIS TEST CODE
+        self.add_control_flow_redirection(0xA258, 0xA350)
+
         proto = {}
         proto["arch"] = self._arch.name()
         proto["os"] = self._os.name()
         proto["functions"] = []
+        proto["control_flow_targets"] = {}
+        proto["control_flow_redirections"] = {}
         proto["variables"] = []
         proto["symbols"] = []
 
@@ -164,6 +185,9 @@ class Program(object):
 
         for func in self._func_defs.values():
             proto["functions"].append(func.proto())
+
+        proto["control_flow_targets"] = self._control_flow_targets
+        proto["control_flow_redirections"] = self._control_flow_redirections
 
         for var in self._var_decls.values():
             proto["variables"].append(var.proto())

@@ -480,6 +480,72 @@ static bool ParseRange(anvill::Program &program, llvm::json::Object *obj) {
   return true;
 }
 
+// TODO(alessandro): Remove this
+static bool ParseControlFlowTargets(anvill::Program &program,
+                                    llvm::json::Object &ctrl_flow_targets) {
+  for (auto &ctrl_flow_target : ctrl_flow_targets) {
+    const auto &source_address_as_str = ctrl_flow_target.getFirst().str();
+    const auto &target_list_as_obj = ctrl_flow_target.getSecond();
+
+    const auto target_list_as_array = target_list_as_obj.getAsArray();
+    if (target_list_as_array == nullptr) {
+      return false;
+    }
+
+    char *null_term_ptr = nullptr;
+    auto source_address =
+        std::strtoull(source_address_as_str.c_str(), &null_term_ptr, 10);
+    if (source_address == 0U || null_term_ptr == nullptr ||
+        *null_term_ptr != '\0') {
+      return false;
+    }
+
+    anvill::TargetList target_list = {};
+    for (const auto &target_as_value : *target_list_as_array) {
+      auto opt_target_as_int = target_as_value.getAsInteger();
+      if (!opt_target_as_int.hasValue()) {
+        return false;
+      }
+
+      auto target_as_int = opt_target_as_int.getValue();
+      target_list.push_back(target_as_int);
+    }
+
+    program.AddControlFlowTargetList(source_address, target_list);
+  }
+
+  return true;
+}
+
+// TODO(alessandro): Remove this
+static bool ParseControlFlowRedirection(anvill::Program &program,
+                                        llvm::json::Object &redirection_list) {
+  for (auto &redirection : redirection_list) {
+    const auto &source_address_as_str = redirection.getFirst().str();
+
+    char *null_term_ptr = nullptr;
+    auto source_address =
+        std::strtoull(source_address_as_str.c_str(), &null_term_ptr, 10);
+    if (source_address == 0U || null_term_ptr == nullptr ||
+        *null_term_ptr != '\0') {
+      return false;
+    }
+
+    const auto &destination_obj = redirection.getSecond();
+
+    auto opt_destination_addr = destination_obj.getAsInteger();
+    if (!opt_destination_addr) {
+      return false;
+    }
+
+    auto destination_addr = opt_destination_addr.getValue();
+
+    program.AddControlFlowRedirection(source_address, destination_addr);
+  }
+
+  return true;
+}
+
 // Parse the core data out of a JSON specification, and do a small
 // amount of validation. A JSON spec contains the following:
 //
@@ -524,6 +590,38 @@ static bool ParseSpec(const remill::Arch *arch, llvm::LLVMContext &context,
   } else if (spec->find("functions") != spec->end()) {
     LOG(ERROR) << "Non-JSON array value for 'functions' in spec file '"
                << FLAGS_spec << "'";
+    return false;
+  }
+
+  if (auto redirection_list = spec->getObject("control_flow_redirections")) {
+    if (!ParseControlFlowRedirection(program, *redirection_list)) {
+      LOG(ERROR)
+          << "Failed to parse the 'control_flow_redirections' section in spec file '"
+          << FLAGS_spec << "'";
+
+      return false;
+    }
+
+  } else if (spec->find("control_flow_redirections") != spec->end()) {
+    LOG(ERROR)
+        << "Non-JSON array value for 'control_flow_redirections' in spec file '"
+        << FLAGS_spec << "'";
+    return false;
+  }
+
+  if (auto ctrl_flow_targets = spec->getObject("control_flow_targets")) {
+    if (!ParseControlFlowTargets(program, *ctrl_flow_targets)) {
+      LOG(ERROR)
+          << "Failed to parse the 'control_flow_targets' section in spec file '"
+          << FLAGS_spec << "'";
+
+      return false;
+    }
+
+  } else if (spec->find("control_flow_targets") != spec->end()) {
+    LOG(ERROR)
+        << "Non-JSON array value for 'control_flow_targets' in spec file '"
+        << FLAGS_spec << "'";
     return false;
   }
 
@@ -687,7 +785,7 @@ int main(int argc, char *argv[]) {
   //            which happens deep inside the `EntityLifter`. Only then does
   //            Remill properly know about register information, which
   //            subsequently allows it to parse value decls in specs :-(
-  anvill::EntityLifter lifter(options, memory, types);
+  anvill::EntityLifter lifter(options, memory, types, program);
 
   // Parse the spec, which contains as much or as little details about what is
   // being lifted as the spec generator desired and put it into an
