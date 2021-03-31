@@ -18,19 +18,41 @@ import ida_funcs
 import ida_typeinf
 import ida_nalt
 import ida_idp
+import ida_idaapi
+import ida_frame
+import ida_ida
 
 
 from anvill.program import *
 from anvill.type import *
 
 
+from .imageparser import *
+
+
 from .utils import *
 from .idafunction import *
+
+
+_FLOAT_SIZES = (2, 4, 8, 10, 12, 16)
 
 
 class IDAProgram(Program):
     def __init__(self, arch, os):
         super(IDAProgram, self).__init__(arch, os)
+
+        self.init_ctrl_flow_redirections()
+
+    def init_ctrl_flow_redirections(self):
+        inf = ida_idaapi.get_inf_structure()
+        if inf.filetype != ida_ida.f_ELF:
+            return
+
+        input_file_path = ida_nalt.get_input_file_path()
+        image_parser = create_elf_image_parser(input_file_path)
+
+        for function_thunk in image_parser.get_function_thunk_list():
+            print("function_thunk: {}@{:x}".format(function_thunk.name, function_thunk.rva))
 
     def get_variable_impl(self, address):
         """Given an address, return a `Variable` instance, or

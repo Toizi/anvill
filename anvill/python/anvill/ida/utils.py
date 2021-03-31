@@ -24,9 +24,6 @@ TYPE_CONTEXT_PARAMETER = 3
 TYPE_CONTEXT_RETURN = 4
 
 
-_FLOAT_SIZES = (2, 4, 8, 10, 12, 16)
-
-
 def find_segment_containing_ea(ea, seg_ref):
     """Find and return a `segment_t` containing `ea`, or `None`."""
     seg = seg_ref[0]

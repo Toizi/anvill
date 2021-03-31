@@ -164,9 +164,6 @@ class Program(object):
         return self._memory
 
     def proto(self):
-        # TODO: REMOVE THIS TEST CODE
-        self.add_control_flow_redirection(0xA258, 0xA350)
-
         proto = {}
         proto["arch"] = self._arch.name()
         proto["os"] = self._os.name()
