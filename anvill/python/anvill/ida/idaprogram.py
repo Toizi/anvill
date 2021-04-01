@@ -222,14 +222,15 @@ class IDAProgram(Program):
         is_32_bit = False
 
         for function_thunk in function_thunk_list:
-            rva = ida_bytes.get_wide_dword(function_thunk.rva) if is_32_bit else ida_bytes.get_qword(function_thunk.rva)
+            redirection_dest = ida_bytes.get_wide_dword(function_thunk.rva) if is_32_bit else ida_bytes.get_qword(function_thunk.rva)
 
-            rva2 = ida_xref.get_first_cref_to(rva)
-            if rva2 == ida_idaapi.BADADDR:
+            caller_address = ida_xref.get_first_cref_to(redirection_dest)
+            if caller_address == ida_idaapi.BADADDR:
                 continue
 
-            print("Function thunk {:x} ({}) - {:x} - {:x}".format(function_thunk.rva, function_thunk.name, rva, rva2))
+            redirection_source = idc.get_func_attr(caller_address, idc.FUNCATTR_START)
 
+            print("anvill: Redirecting {:x} to {:x} for '{}'".format(redirection_source, redirection_dest, function_thunk.name))
 
 
 def _variable_name(ea):

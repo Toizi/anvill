@@ -35,14 +35,6 @@ class IControlFlowProvider {
   static Result<Ptr, ControlFlowProviderError> Create(const Program &program);
   virtual ~IControlFlowProvider(void) = default;
 
-  // TODO: To remove?
-  virtual OptionalTargetList GetTargetList(std::uint64_t address) const = 0;
-
-  // TODO: To remove?
-  virtual TargetList GetTargetListOr(
-      std::uint64_t address,
-      std::optional<std::uint64_t> opt_default_value = {}) const = 0;
-
   // Returns a possible redirection for the given target
   virtual std::uint64_t GetRedirection(std::uint64_t address) const = 0;
 

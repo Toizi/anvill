@@ -25,13 +25,6 @@ class ControlFlowProvider final : public IControlFlowProvider {
  public:
   virtual ~ControlFlowProvider(void) override;
 
-  virtual OptionalTargetList
-  GetTargetList(std::uint64_t address) const override;
-
-  virtual TargetList GetTargetListOr(
-      std::uint64_t address,
-      std::optional<std::uint64_t> opt_default_value = {}) const override;
-
   virtual std::uint64_t GetRedirection(std::uint64_t address) const override;
 
  private:

@@ -480,67 +480,46 @@ static bool ParseRange(anvill::Program &program, llvm::json::Object *obj) {
   return true;
 }
 
-// TODO(alessandro): Remove this
-static bool ParseControlFlowTargets(anvill::Program &program,
-                                    llvm::json::Object &ctrl_flow_targets) {
-  for (auto &ctrl_flow_target : ctrl_flow_targets) {
-    const auto &source_address_as_str = ctrl_flow_target.getFirst().str();
-    const auto &target_list_as_obj = ctrl_flow_target.getSecond();
-
-    const auto target_list_as_array = target_list_as_obj.getAsArray();
-    if (target_list_as_array == nullptr) {
-      return false;
-    }
-
-    char *null_term_ptr = nullptr;
-    auto source_address =
-        std::strtoull(source_address_as_str.c_str(), &null_term_ptr, 10);
-    if (source_address == 0U || null_term_ptr == nullptr ||
-        *null_term_ptr != '\0') {
-      return false;
-    }
-
-    anvill::TargetList target_list = {};
-    for (const auto &target_as_value : *target_list_as_array) {
-      auto opt_target_as_int = target_as_value.getAsInteger();
-      if (!opt_target_as_int.hasValue()) {
-        return false;
-      }
-
-      auto target_as_int = opt_target_as_int.getValue();
-      target_list.push_back(target_as_int);
-    }
-
-    program.AddControlFlowTargetList(source_address, target_list);
-  }
-
-  return true;
-}
-
-// TODO(alessandro): Remove this
 static bool ParseControlFlowRedirection(anvill::Program &program,
-                                        llvm::json::Object &redirection_list) {
-  for (auto &redirection : redirection_list) {
-    const auto &source_address_as_str = redirection.getFirst().str();
+                                        llvm::json::Array &redirection_list) {
 
-    char *null_term_ptr = nullptr;
-    auto source_address =
-        std::strtoull(source_address_as_str.c_str(), &null_term_ptr, 10);
-    if (source_address == 0U || null_term_ptr == nullptr ||
-        *null_term_ptr != '\0') {
+  auto index{0U};
+
+  for (const llvm::json::Value &list_entry : redirection_list) {
+    auto address_pair = list_entry.getAsArray();
+    if (address_pair == nullptr) {
+      LOG(ERROR) << "Non-JSON list entry in 'control_flow_redirections' array of spec file '"
+                 << FLAGS_spec << "'";
+
       return false;
     }
 
-    const auto &destination_obj = redirection.getSecond();
+    const auto &source_address_obj = address_pair->operator[](0);
+    auto opt_source_address = source_address_obj.getAsInteger();
+    if (!opt_source_address) {
+      LOG(ERROR) << "Invalid integer value in source address for the #"
+                 << index << " of the control_flow_redirections in the following spec file: '"
+                 << FLAGS_spec << "'";
 
-    auto opt_destination_addr = destination_obj.getAsInteger();
-    if (!opt_destination_addr) {
       return false;
     }
 
-    auto destination_addr = opt_destination_addr.getValue();
+    const auto &dest_address_obj = address_pair->operator[](1);
+    auto opt_dest_address = dest_address_obj.getAsInteger();
+    if (!opt_dest_address) {
+      LOG(ERROR) << "Invalid integer value in destination address for the #"
+                 << index << " of the control_flow_redirections in the following spec file: '"
+                 << FLAGS_spec << "'";
 
-    program.AddControlFlowRedirection(source_address, destination_addr);
+      return false;
+    }
+
+    auto source_address = opt_source_address.getValue();
+    auto dest_address = opt_dest_address.getValue();
+
+    program.AddControlFlowRedirection(source_address, dest_address);
+
+    ++index;
   }
 
   return true;
@@ -593,7 +572,7 @@ static bool ParseSpec(const remill::Arch *arch, llvm::LLVMContext &context,
     return false;
   }
 
-  if (auto redirection_list = spec->getObject("control_flow_redirections")) {
+  if (auto redirection_list = spec->getArray("control_flow_redirections")) {
     if (!ParseControlFlowRedirection(program, *redirection_list)) {
       LOG(ERROR)
           << "Failed to parse the 'control_flow_redirections' section in spec file '"
@@ -605,22 +584,6 @@ static bool ParseSpec(const remill::Arch *arch, llvm::LLVMContext &context,
   } else if (spec->find("control_flow_redirections") != spec->end()) {
     LOG(ERROR)
         << "Non-JSON array value for 'control_flow_redirections' in spec file '"
-        << FLAGS_spec << "'";
-    return false;
-  }
-
-  if (auto ctrl_flow_targets = spec->getObject("control_flow_targets")) {
-    if (!ParseControlFlowTargets(program, *ctrl_flow_targets)) {
-      LOG(ERROR)
-          << "Failed to parse the 'control_flow_targets' section in spec file '"
-          << FLAGS_spec << "'";
-
-      return false;
-    }
-
-  } else if (spec->find("control_flow_targets") != spec->end()) {
-    LOG(ERROR)
-        << "Non-JSON array value for 'control_flow_targets' in spec file '"
         << FLAGS_spec << "'";
     return false;
   }

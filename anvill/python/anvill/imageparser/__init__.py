@@ -16,6 +16,7 @@
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from typing import List
 
 
 @dataclass
@@ -27,6 +28,20 @@ class ImageFunctionThunk:
     name: str = ""
 
 
+class ImageReader:
+    """This is the interface for the memory reader used by image parser
+    """
+
+    def __init__(self):
+        pass
+
+    @abstractmethod
+    def get_function_thunk_list(self) -> List[ImageFunctionThunk]:
+        """Returns a list of function thunks found in the image
+        """
+        pass
+
+
 class ImageParser:
     """This is the interface for image parser classes
     """
@@ -35,7 +50,7 @@ class ImageParser:
         pass
 
     @abstractmethod
-    def get_function_thunk_list(self) -> [ImageFunctionThunk]:
+    def get_function_thunk_list(self) -> List[ImageFunctionThunk]:
         """Returns a list of function thunks found in the image
         """
         pass

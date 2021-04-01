@@ -18,6 +18,7 @@ import ctypes
 
 
 from dataclasses import dataclass
+from typing import List
 
 
 from anvill.imageparser import *
@@ -99,10 +100,10 @@ class ELFParser(ImageParser):
 
     _input_file = None
     _file_header: FileHeader = FileHeader()
-    _section_header_list: [SectionHeader] = []
+    _section_header_list: List[SectionHeader] = []
     _string_table: bytearray = bytearray()
-    _symbol_list: [ELFSymbol] = []
-    _function_thunk_list: [ImageFunctionThunk] = []
+    _symbol_list: List[ELFSymbol] = []
+    _function_thunk_list: List[ImageFunctionThunk] = []
 
     def __init__(self, input_file_path: str):
         """Initializes the ELF image object
@@ -122,7 +123,7 @@ class ELFParser(ImageParser):
         self._parse_symbol_table()
         self._process_function_thunks()
 
-    def get_function_thunk_list(self) -> [ImageFunctionThunk]:
+    def get_function_thunk_list(self) -> List[ImageFunctionThunk]:
         """See the ImageParser base class for more information on this method
         """
 
