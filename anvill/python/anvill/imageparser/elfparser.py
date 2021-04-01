@@ -20,7 +20,7 @@ import ctypes
 from dataclasses import dataclass
 
 
-from anvill.ida.imageparser import *
+from anvill.imageparser import *
 
 
 MAX_STRING_LENGTH = 2048

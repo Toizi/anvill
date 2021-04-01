@@ -28,9 +28,7 @@ import ida_auto
 
 from anvill.program import *
 from anvill.type import *
-
-
-from .imageparser import *
+from anvill.imageparser import *
 
 
 from .utils import *
