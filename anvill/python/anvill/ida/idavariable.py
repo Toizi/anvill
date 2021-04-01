@@ -31,7 +31,7 @@ class IDAVariable(Variable):
     def visit(self, program, is_definition, add_refs_as_defs):
         seg_ref = [None]
         seg = find_segment_containing_ea(self.address(), seg_ref)
-        if seg and _is_imported_table_seg(seg):
+        if seg and is_imported_table_seg(seg):
             print(
                 "Variable at {:x} is in an import table!".format(self.address())
             )

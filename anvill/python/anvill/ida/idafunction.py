@@ -20,12 +20,27 @@ import ida_bytes
 import ida_xref
 import ida_idaapi
 import ida_fixup
+import ida_name
 
 
 from anvill.function import *
 
 
 from .utils import *
+
+
+
+_OPERANDS_NUMS = (0, 1, 2)
+
+
+_REF_OPERAND_TYPES = (
+    idc.o_phrase,
+    idc.o_displ,
+    idc.o_imm,
+    idc.o_far,
+    idc.o_near,
+    idc.o_mem,
+)
 
 
 class IDAFunction(Function):
@@ -220,3 +235,38 @@ def _xref_iterator(ea, get_first, get_next):
     while target_ea != ida_idaapi.BADADDR:
         yield target_ea
         target_ea = get_next(ea, target_ea)
+
+
+def _add_real_xref(ea, ref_ea, out_ref_eas):
+    """Sometimes IDA will have a operand like `[foo+10]` and the xref collector
+    will give us the address of `foo`, but not the address of `foo+10`, so we
+    will try to find it here."""
+    global _OPERANDS_NUMS, _REF_OPERAND_TYPES
+
+    ref_name = ida_name.get_ea_name(ref_ea)
+    for i in _OPERANDS_NUMS:
+
+        try:
+            op_type = idc.get_operand_type(ea, i)
+        except:
+            return
+
+        if op_type not in _REF_OPERAND_TYPES:
+            continue
+
+        op_str = idc.print_operand(ea, i)
+        if op_str is None:
+            return
+
+        if ref_name in op_str:
+            op_val = idc.get_operand_value(ea, i)
+            out_ref_eas.add(op_val)
+
+
+def _visit_ref_ea(program, ref_ea, add_refs_as_defs):
+    """Try to add `ref_ea` as some referenced entity."""
+    if not program.try_add_referenced_entity(ref_ea, add_refs_as_defs):
+        seg_ref = [None]
+        seg = find_segment_containing_ea(ref_ea, seg_ref)
+        if seg:
+            print("Unable to add {:x} as a variable or function".format(ref_ea))

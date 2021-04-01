@@ -21,6 +21,9 @@ import ida_idp
 import ida_idaapi
 import ida_frame
 import ida_ida
+import ida_xref
+import ida_funcs
+import ida_auto
 
 
 from anvill.program import *
@@ -32,6 +35,7 @@ from .imageparser import *
 
 from .utils import *
 from .idafunction import *
+from .idavariable import *
 
 
 _FLOAT_SIZES = (2, 4, 8, 10, 12, 16)
@@ -39,20 +43,12 @@ _FLOAT_SIZES = (2, 4, 8, 10, 12, 16)
 
 class IDAProgram(Program):
     def __init__(self, arch, os):
+        # Wait until IDA has finished analysis before we proceed, otherwise
+        # we will end up missing code, data and cross references
+        ida_auto.auto_wait()
+
         super(IDAProgram, self).__init__(arch, os)
-
-        self.init_ctrl_flow_redirections()
-
-    def init_ctrl_flow_redirections(self):
-        inf = ida_idaapi.get_inf_structure()
-        if inf.filetype != ida_ida.f_ELF:
-            return
-
-        input_file_path = ida_nalt.get_input_file_path()
-        image_parser = create_elf_image_parser(input_file_path)
-
-        for function_thunk in image_parser.get_function_thunk_list():
-            print("function_thunk: {}@{:x}".format(function_thunk.name, function_thunk.rva))
+        self._init_ctrl_flow_redirections()
 
     def get_variable_impl(self, address):
         """Given an address, return a `Variable` instance, or
@@ -118,7 +114,7 @@ class IDAProgram(Program):
         elif (
             not ida_funcs.func_contains(pfn, address)
             and not _is_extern_seg(seg)
-            and not _is_imported_table_seg(seg)
+            and not is_imported_table_seg(seg)
         ):
             raise InvalidFunctionException(
                 "No function defined at or containing address {:x}".format(address)
@@ -207,6 +203,35 @@ class IDAProgram(Program):
         )
         self.add_symbol(address, _function_name(address))
         return func
+
+    def _init_ctrl_flow_redirections(self):
+        """Initializes the control flow redirections using function thunks
+        """
+
+        # We only support the ELF format for now
+        inf = ida_idaapi.get_inf_structure()
+        if inf.filetype != ida_ida.f_ELF:
+            return
+
+        # List the function thunks first
+        input_file_path = ida_nalt.get_input_file_path()
+        image_parser = create_elf_image_parser(input_file_path)
+        function_thunk_list = image_parser.get_function_thunk_list()
+
+        # Go through each function thunk, and look at its cross references; there
+        # should always be only one user, which is the wrapper around the imported
+        # function
+        is_32_bit = False
+
+        for function_thunk in function_thunk_list:
+            rva = ida_bytes.get_wide_dword(function_thunk.rva) if is_32_bit else ida_bytes.get_qword(function_thunk.rva)
+
+            rva2 = ida_xref.get_first_cref_to(rva)
+            if rva2 == ida_idaapi.BADADDR:
+                continue
+
+            print("Function thunk {:x} ({}) - {:x} - {:x}".format(function_thunk.rva, function_thunk.name, rva, rva2))
+
 
 
 def _variable_name(ea):
@@ -617,3 +642,66 @@ def _function_name(ea):
         pass
     return "sub_{:x}".format(ea)
 
+
+def _is_extern_seg(seg):
+    """Returns `True` if `seg` refers to a segment with external variable or
+    function declarations."""
+    if not seg:
+        return False
+
+    seg_type = idc.get_segm_attr(seg.start_ea, idc.SEGATTR_TYPE)
+    return seg_type == idc.SEG_XTRN
+
+
+def _invent_var_type(ea, seg_ref, min_size=1):
+    """Try to invent a variable type. This will basically be an array of bytes
+    that spans what we need. We will, however, try to be slightly smarter and
+    look for cross-references in the range, and when possible, use their types."""
+    seg = find_segment_containing_ea(ea, seg_ref)
+    if not seg:
+        return ea, None
+
+    head_ea = ida_bytes.get_item_head(ea)
+    if head_ea < ea:
+        head_seg = find_segment_containing_ea(head_ea, seg_ref)
+        if head_seg != seg:
+            return ea, None
+        return _invent_var_type(head_ea, seg_ref, ea - head_ea)
+
+    min_size = max(min_size, ida_bytes.get_item_size(ea))
+    next_ea = ida_bytes.next_head(ea + 1, seg.end_ea)
+    next_seg = find_segment_containing_ea(next_ea, seg_ref)
+
+    arr = ArrayType()
+    arr.set_element_type(IntegerType(1, False))
+
+    if not next_seg or next_seg != seg:
+        arr.set_num_elements(min_size)
+        return ea, arr
+
+    min_size = min(min_size, next_ea - ea)
+
+    # TODO(pag): Go and do a better job, e.g. find pointers inside of the global.
+    # i = 0
+    # while i < min_size:
+    #   for ref_ea in _xref_generator(ea + i, seg_ref):
+    #     break
+    #   i += 1
+
+    arr.set_num_elements(min_size)
+    return ea, arr
+
+
+def _get_address_sized_reg(arch, reg_name):
+    """Given the regiseter name `reg_name`, find the name of the register in the
+    same family whose size is the pointer size of this architecture."""
+
+    try:
+        family = arch.register_family(reg_name)
+        addr_size = arch.pointer_size()
+        for f_reg_name, f_reg_offset, f_reg_size in family:
+            if 0 == f_reg_offset and addr_size == f_reg_size:
+                return f_reg_name
+    except:
+        pass
+    return arch.register_name(reg_name)

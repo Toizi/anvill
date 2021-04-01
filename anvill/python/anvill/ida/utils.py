@@ -15,6 +15,7 @@
 
 
 import ida_segment
+import idc
 
 
 TYPE_CONTEXT_NESTED = 0
@@ -38,3 +39,13 @@ def find_segment_containing_ea(ea, seg_ref):
         seg = ida_segment.get_next_seg(seg.start_ea)
 
     return None
+
+
+def is_imported_table_seg(seg):
+    """Returns `True` if `seg` refers to a segment that typically contains
+    import entries, i.e. cross-reference pointers into an external segment."""
+    if not seg:
+        return False
+
+    seg_name = idc.get_segm_name(seg.start_ea)
+    return ".idata" in seg_name or ".plt" in seg_name or ".got" in seg_name
