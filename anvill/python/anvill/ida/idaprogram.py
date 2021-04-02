@@ -235,6 +235,8 @@ class IDAProgram(Program):
             print("anvill: Redirecting {:x} to {:x} for '{}'".format(
                 redirection_source, redirection_dest, function_thunk.name))
 
+            self.add_control_flow_redirection(redirection_source, redirection_dest)
+
 
 def _variable_name(ea):
     """Return the name of a variable."""

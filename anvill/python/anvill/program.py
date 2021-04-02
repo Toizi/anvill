@@ -174,7 +174,7 @@ class Program(object):
         for func in self._func_defs.values():
             proto["functions"].append(func.proto())
 
-        for source, target in self._control_flow_redirections:
+        for source, target in self._control_flow_redirections.items():
             proto["control_flow_redirections"].append([source, target])
 
         for var in self._var_decls.values():

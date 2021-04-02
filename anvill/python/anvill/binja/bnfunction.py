@@ -26,6 +26,7 @@ from .xrefs import *
 
 
 from anvill.function import *
+from anvill.type import *
 
 
 class BNFunction(Function):

@@ -167,12 +167,41 @@ class BNProgram(Program):
         """
 
         # We only support the ELF format for now
-        # ..
+        # TODO
 
         # List the function thunks first
         input_file_path = self._bv.file.filename
         image_parser = create_elf_image_parser(input_file_path)
         function_thunk_list = image_parser.get_function_thunk_list()
+
+        # Go through each function thunk
+        is_32_bit = image_parser.get_image_bitness() == 32
+
+        reader = bn.BinaryReader(self._bv, bn.Endianness.LittleEndian)
+
+        for function_thunk in function_thunk_list:
+            # Read the call destination
+            reader.seek(function_thunk.rva)
+            redirection_dest = reader.read32() if is_32_bit else reader.read64()
+
+            # Get the variable defined at the dest address
+            func_location = self._bv.get_data_var_at(function_thunk.rva)
+            if not func_location:
+                print("anvill: No variable defined for {:x}".format(function_thunk.rva))
+                continue
+
+            # We should only have one caller
+            for caller in func_location.code_refs:
+                # Get the function containing this address; we need it to determine
+                # its start address
+                for caller_function in self._bv.get_functions_containing(caller.address):
+                    redirection_source = caller_function.start
+
+                    print("anvill: Redirecting {:x} to {:x} for '{}'".format(
+                        redirection_source, redirection_dest, function_thunk.name))
+
+                    self.add_control_flow_redirection(redirection_source, redirection_dest)
+
 
 def _get_arch(bv):
     """Arch class that gives access to architecture-specific functionality."""
