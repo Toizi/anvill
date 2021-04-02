@@ -219,18 +219,21 @@ class IDAProgram(Program):
         # Go through each function thunk, and look at its cross references; there
         # should always be only one user, which is the wrapper around the imported
         # function
-        is_32_bit = False
+        is_32_bit = image_parser.get_image_bitness() == 32
 
         for function_thunk in function_thunk_list:
-            redirection_dest = ida_bytes.get_wide_dword(function_thunk.rva) if is_32_bit else ida_bytes.get_qword(function_thunk.rva)
+            redirection_dest = ida_bytes.get_wide_dword(
+                function_thunk.rva) if is_32_bit else ida_bytes.get_qword(function_thunk.rva)
 
             caller_address = ida_xref.get_first_cref_to(redirection_dest)
             if caller_address == ida_idaapi.BADADDR:
                 continue
 
-            redirection_source = idc.get_func_attr(caller_address, idc.FUNCATTR_START)
+            redirection_source = idc.get_func_attr(
+                caller_address, idc.FUNCATTR_START)
 
-            print("anvill: Redirecting {:x} to {:x} for '{}'".format(redirection_source, redirection_dest, function_thunk.name))
+            print("anvill: Redirecting {:x} to {:x} for '{}'".format(
+                redirection_source, redirection_dest, function_thunk.name))
 
 
 def _variable_name(ea):

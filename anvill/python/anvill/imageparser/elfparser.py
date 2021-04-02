@@ -129,6 +129,20 @@ class ELFParser(ImageParser):
 
         return self._function_thunk_list
 
+    def get_image_bitness(self) -> int:
+        """See the ImageParser base class for more information on this method
+        """
+
+        # This method requires that the `e_ident` field in the ELF file
+        # header has already been read.
+
+        if self._file_header.e_ident[4] == 1:
+            return 32
+        elif self._file_header.e_ident[4] == 2:
+            return 64
+        else:
+            raise NotImplementedError()
+
     def _seek(self, offset: int):
         """Moves the current read offset
         """
@@ -184,6 +198,19 @@ class ELFParser(ImageParser):
 
         return int.from_bytes(self._read(8), byteorder="little", signed=False)
 
+    def _read_uptr(self) -> int:
+        """Reads a ptr-sized unsigned integer from the current offset
+
+        This method requires that the `e_ident` field in the ELF file
+        header has already been read.
+
+        Returns:
+            The ptr-sized integer at the current offset
+        """
+
+        type_size = int(self.get_image_bitness() / 8)
+        return int.from_bytes(self._read(type_size), byteorder="little", signed=False)
+
     def _read_file_header(self):
         """Acquires the ELF header,
 
@@ -194,24 +221,16 @@ class ELFParser(ImageParser):
         be read.
         """
 
+        # The _read_uptr becomes usable once `self._file_header.e_ident[4]`
+        # is set`
         self._file_header.e_ident = self._read(16)
+
         self._file_header.e_type = self._read_u16()
         self._file_header.e_machine = self._read_u16()
         self._file_header.e_version = self._read_u32()
-
-        if self._file_header.e_ident[4] == 1:
-            self._file_header.e_entry = self._read_u32()
-            self._file_header.e_phoff = self._read_u32()
-            self._file_header.e_shoff = self._read_u32()
-
-        elif self._file_header.e_ident[4] == 2:
-            self._file_header.e_entry = self._read_u64()
-            self._file_header.e_phoff = self._read_u64()
-            self._file_header.e_shoff = self._read_u64()
-
-        else:
-            raise NotImplementedError()
-
+        self._file_header.e_entry = self._read_uptr()
+        self._file_header.e_phoff = self._read_uptr()
+        self._file_header.e_shoff = self._read_uptr()
         self._file_header.e_flags = self._read_u32()
         self._file_header.e_ehsize = self._read_u16()
         self._file_header.e_phentsize = self._read_u16()
@@ -231,35 +250,14 @@ class ELFParser(ImageParser):
 
             section_header.sh_name = self._read_u32()
             section_header.sh_type = self._read_u32()
-
-            if self._file_header.e_ident[4] == 1:
-                section_header.sh_flags = self._read_u32()
-                section_header.sh_addr = self._read_u32()
-                section_header.sh_offset = self._read_u32()
-                section_header.sh_size = self._read_u32()
-
-            elif self._file_header.e_ident[4] == 2:
-                section_header.sh_flags = self._read_u64()
-                section_header.sh_addr = self._read_u64()
-                section_header.sh_offset = self._read_u64()
-                section_header.sh_size = self._read_u64()
-
-            else:
-                raise NotImplementedError()
-
+            section_header.sh_flags = self._read_uptr()
+            section_header.sh_addr = self._read_uptr()
+            section_header.sh_offset = self._read_uptr()
+            section_header.sh_size = self._read_uptr()
             section_header.sh_link = self._read_u32()
             section_header.sh_info = self._read_u32()
-
-            if self._file_header.e_ident[4] == 1:
-                section_header.sh_addralign = self._read_u32()
-                section_header.sh_entsize = self._read_u32()
-
-            elif self._file_header.e_ident[4] == 2:
-                section_header.sh_addralign = self._read_u64()
-                section_header.sh_entsize = self._read_u64()
-
-            else:
-                raise NotImplementedError()
+            section_header.sh_addralign = self._read_uptr()
+            section_header.sh_entsize = self._read_uptr()
 
             self._section_header_list.append(section_header)
 
@@ -360,7 +358,7 @@ class ELFParser(ImageParser):
         if dynsym_section_header is None:
             raise RuntimeError("Failed to acquire the '.dynsym' section")
 
-        is_32_bit = self._file_header.e_ident[4] == 1
+        is_32_bit = self.get_image_bitness() == 32
 
         symbol_size = 16 if is_32_bit else 24
         symbol_count = int(dynsym_section_header.sh_size / symbol_size)
@@ -390,7 +388,7 @@ class ELFParser(ImageParser):
             self._symbol_list.append(elf_symbol)
 
     def _process_function_thunks(self):
-        is_32_bit = self._file_header.e_ident[4] == 1
+        is_32_bit = self.get_image_bitness() == 32
 
         dynstr_section = self._get_section(".dynstr")
         if dynstr_section is None:

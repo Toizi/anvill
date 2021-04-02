@@ -56,6 +56,13 @@ class ImageParser:
         pass
 
 
+    @abstractmethod
+    def get_image_bitness(self) -> int:
+        """Returns the bitness of this image (i.e. 16, 32, 64)
+        """
+        pass
+
+
 from .elfparser import *
 
 

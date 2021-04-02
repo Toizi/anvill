@@ -20,6 +20,7 @@ import binaryninja as bn
 from anvill.program import *
 from anvill.arch import *
 from anvill.os import *
+from anvill.imageparser import *
 
 
 from .bnvariable import *
@@ -34,6 +35,7 @@ class BNProgram(Program):
         self._path: Final[str] = path
         self._bv: Final[bn.BinaryView] = bv
         self._type_cache: Final[TypeCache] = TypeCache(self._bv)
+        self._init_ctrl_flow_redirections()
 
     @property
     def bv(self):
@@ -160,6 +162,17 @@ class BNProgram(Program):
         for s in self._bv.get_symbols():
             yield (s.address, s.name)
 
+    def _init_ctrl_flow_redirections(self):
+        """Initializes the control flow redirections using function thunks
+        """
+
+        # We only support the ELF format for now
+        # ..
+
+        # List the function thunks first
+        input_file_path = self._bv.file.filename
+        image_parser = create_elf_image_parser(input_file_path)
+        function_thunk_list = image_parser.get_function_thunk_list()
 
 def _get_arch(bv):
     """Arch class that gives access to architecture-specific functionality."""
