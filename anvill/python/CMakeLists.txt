@@ -40,6 +40,7 @@ if(ANVILL_INSTALL_PYTHON3_LIBS)
     anvill/binja/xreftype.py
     anvill/exc.py
     anvill/function.py
+    anvill/ghidra3.py
     anvill/ida/__init__.py
     anvill/ida/idafunction.py
     anvill/ida/idaprogram.py

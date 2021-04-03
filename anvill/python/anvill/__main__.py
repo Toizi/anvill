@@ -20,12 +20,10 @@ import sys
 import argparse
 import json
 import platform
-
-import binaryninja as bn
+import typing
 
 from .util import config_logger
 from .util import DEBUG
-from .binja import get_program
 
 
 def main():
@@ -70,6 +68,14 @@ def main():
         help="Where the image should be loaded, expressed as an hex integer.",
     )
 
+    arg_parser.add_argument(
+        "--analyzer",
+        type=str,
+        choices=["binja", "ghidra"],
+        default="binja",
+        help="Analyzer framework to use"
+    )
+
     args = arg_parser.parse_args()
 
     # Configure logger
@@ -92,6 +98,22 @@ def main():
         sys.stderr.write("FATAL: Could not initialize BinaryNinja's BinaryView\n")
         sys.stderr.write("Does BinaryNinja support this architecture?\n")
         sys.exit(1)
+
+    if args.analyzer == "binja":
+        p = binja_main(args)
+    else:
+        p = ghidra_main(args)
+
+    # an error occurred
+    if isinstance(p, int):
+        return p
+
+    open(args.spec_out, "w").write(json.dumps(p.proto()))
+
+
+def binja_main(args):
+    import binaryninja as bn
+    from .binja import get_program
 
     bv = p.bv
 
@@ -142,7 +164,58 @@ def main():
         if ea != ep_ea:
             p.add_symbol(ea, name)
 
-    open(args.spec_out, "w").write(json.dumps(p.proto()))
+    return p
+
+if typing.TYPE_CHECKING:
+    try:
+        import ghidra
+        from ghidra.ghidra_builtins import *
+    except:
+        pass
+
+def ghidra_main(args):
+    from .ghidra3 import get_ghidra_program
+    import ghidra_bridge
+
+    try:
+        bridge = ghidra_bridge.GhidraBridge(namespace=globals())
+    except ConnectionRefusedError:
+        print("error: Could not establish ghidra bridge connection.")
+        print("Make sure you have a ghidra project open and the bridge running")
+        return 1
+    except:
+        raise
+
+
+    with bridge as b:
+
+        p = get_ghidra_program(b)
+
+        ep = None
+        if args.entry_point is not None:
+            try:
+                ep = int(args.entry_point, 0)
+            except ValueError:
+                ep = args.entry_point
+
+        ep_ea = None
+
+        if ep is None:
+            for f in currentProgram.getFunctionManager().getFunctions(True):
+                ea = f.getEntryPoint().offset
+                p.add_function_definition(ea, args.refs_as_defs)
+        elif isinstance(ep, int):
+            p.add_function_definition(ep, args.refs_as_defs)
+        else:
+            raise RuntimeError("TODO: NYI")
+
+        for s in currentProgram.getSymbolTable().getAllSymbols():
+            ea, name = s.getAddress().offset, s.getName()
+            if ea != ep_ea:
+                p.add_symbol(ea, name)
+
+        return p
+
 
 
 if __name__ == "__main__":

@@ -38,4 +38,4 @@ setuptools.setup(
         "anvill.ida.__init__", "anvill.ida.idafunction", "anvill.ida.idaprogram",
         "anvill.ida.idavariable", "anvill.ida.utils", "anvill.imageparser.__init__",
         "anvill.imageparser.elfparser", "anvill.loc", "anvill.mem", "anvill.os", "anvill.program",
-        "anvill.type", "anvill.var", "anvill.util"])
+        "anvill.type", "anvill.var", "anvill.util", "anvill.ghidra3"])
