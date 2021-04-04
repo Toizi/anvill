@@ -76,6 +76,12 @@ def main():
         help="Analyzer framework to use"
     )
 
+    arg_parser.add_argument(
+        "--readable",
+        action='store_true',
+        help="Whether the output json will be formatted with indentation"
+    )
+
     args = arg_parser.parse_args()
 
     # Configure logger
@@ -108,7 +114,9 @@ def main():
     if isinstance(p, int):
         return p
 
-    open(args.spec_out, "w").write(json.dumps(p.proto()))
+    open(args.spec_out, "w").write(
+        json.dumps(p.proto(), indent=args.readable and 2 or None)
+    )
 
 
 def binja_main(args):
@@ -201,7 +209,7 @@ def ghidra_main(args):
         ep_ea = None
 
         if ep is None:
-            for f in currentProgram.getFunctionManager().getFunctions(True):
+            for f in bridge.remote_eval('currentProgram.getFunctionManager().getFunctions(True)'):
                 ea = f.getEntryPoint().offset
                 p.add_function_definition(ea, args.refs_as_defs)
         elif isinstance(ep, int):
@@ -209,8 +217,9 @@ def ghidra_main(args):
         else:
             raise RuntimeError("TODO: NYI")
 
-        for s in currentProgram.getSymbolTable().getAllSymbols():
-            ea, name = s.getAddress().offset, s.getName()
+        # remote eval for potentially large collections. Very slow otherwise
+        for ea, name in bridge.remote_eval("""[(s.getAddress().offset, s.getName()) for s in
+                                        currentProgram.getSymbolTable().getAllSymbols(False)]"""):
             if ea != ep_ea:
                 p.add_symbol(ea, name)
 
