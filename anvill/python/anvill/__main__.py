@@ -82,6 +82,12 @@ def main():
         help="Whether the output json will be formatted with indentation"
     )
 
+    arg_parser.add_argument(
+        "--shutdown-ghidra-bridge",
+        action='store_true',
+        help="Shut down the ghidra bridge after execution"
+    )
+
     args = arg_parser.parse_args()
 
     # Configure logger
@@ -197,32 +203,44 @@ def ghidra_main(args):
 
     with bridge as b:
 
-        p = get_ghidra_program(b)
+        try:
+            p = get_ghidra_program(b)
 
-        ep = None
-        if args.entry_point is not None:
-            try:
-                ep = int(args.entry_point, 0)
-            except ValueError:
-                ep = args.entry_point
+            ep = None
+            if args.entry_point is not None:
+                try:
+                    ep = int(args.entry_point, 0)
+                except ValueError:
+                    ep = args.entry_point
 
-        ep_ea = None
+            ep_ea = None
 
-        if ep is None:
-            for f in bridge.remote_eval('currentProgram.getFunctionManager().getFunctions(True)'):
-                ea = f.getEntryPoint().offset
-                p.add_function_definition(ea, args.refs_as_defs)
-        elif isinstance(ep, int):
-            p.add_function_definition(ep, args.refs_as_defs)
-        else:
-            raise RuntimeError("TODO: NYI")
+            if ep is None:
+                for f in bridge.remote_eval('currentProgram.getFunctionManager().getFunctions(True)'):
+                    ea = f.getEntryPoint().offset
+                    p.add_function_definition(ea, args.refs_as_defs)
+            elif isinstance(ep, int):
+                p.add_function_definition(ep, args.refs_as_defs)
+            else:
+                func = getFunction(ep)
+                if func is None:
+                    print('error: Could not find entry point with name {}'.format(ep))
+                    return 1
+                p.add_function_definition(func.getEntryPoint().offset, args.refs_as_defs)
 
-        # remote eval for potentially large collections. Very slow otherwise
-        for ea, name in bridge.remote_eval("""[(s.getAddress().offset, s.getName()) for s in
-                                        currentProgram.getSymbolTable().getAllSymbols(False)]"""):
-            if ea != ep_ea:
-                p.add_symbol(ea, name)
+            # remote eval for potentially large collections. Very slow otherwise
+            for ea, name in bridge.remote_eval("""[(s.getAddress().offset, s.getName()) for s in
+                                            currentProgram.getSymbolTable().getAllSymbols(False)]"""):
+                if ea != ep_ea:
+                    p.add_symbol(ea, name)
 
+        except:
+            if args.shutdown_ghidra_bridge:
+                b.remote_shutdown()
+            raise
+
+        if args.shutdown_ghidra_bridge:
+            b.remote_shutdown()
         return p
 
 

@@ -6,13 +6,17 @@ try:
     from ghidra.ghidra_builtins import *
     ghidra_data = ghidra.program.model.data
     ghidra_listing = ghidra.program.model.listing
+    ghidra_decomp = ghidra.app.decompiler
+    ghidra_block = ghidra.program.model.block
 except:
     pass
 
 # modules that will be imported into the global name space
 remote_imports = [
     ('ghidra.program.model.data', 'ghidra_data'),
-    ('ghidra.program.model.listing', 'ghidra_listing')
+    ('ghidra.program.model.listing', 'ghidra_listing'),
+    ('ghidra.app.decompiler', 'ghidra_decomp'),
+    ('ghidra.program.model.block', 'ghidra_block'),
 ]
 
 from typing import Final, Union, List, Tuple, Optional, Set
@@ -312,13 +316,15 @@ class TypeCache:
         raise UnhandledTypeException("Unrecognized type passed to `Type`.", ty)
 
 class GhidraVariable(Variable):
-    def __init__(self, ghidra_var, arch, address, type_):
+    def __init__(self, bridge, ghidra_var, arch, address, type_):
         super(GhidraVariable, self).__init__(arch, address, type_)
         self._ghidra_var = ghidra_var
+        self._bridge = bridge
 
     def visit(self, program, is_definition, add_refs_as_defs):
         if not is_definition:
             return
+        print('GhidraVariable.visit')
 
         # type could be None if type class not handled
         if self._type is None:
@@ -331,13 +337,24 @@ class GhidraVariable(Variable):
         end = begin + self._type.size(self._arch)
         mem = program.memory()
 
+        # TODO: might have to move this to remote function entirely for perf
         for ea in range(begin, end):
             addr = toAddr(ea)
             mb = getMemoryBlock(addr)
             if mb is None:
                 continue
 
-            mem.map_byte(ea, mb.getByte(addr), mb.isWrite(), mb.isExecute())
+            # variable might be uninitialized
+            # ghidra exceptions don't inherit from the base exception class
+            # therefore we cannot catch them here
+            try:
+                bval = mb.getByte(addr)
+            except KeyboardInterrupt:
+                raise
+            except:
+                # TODO: what should we do if the data is in an uninitialized segment
+                continue
+            mem.map_byte(ea, bval, mb.isWrite(), mb.isExecute())
 
 
 class GhidraFunction(Function):
@@ -359,6 +376,7 @@ class GhidraFunction(Function):
         if not is_definition:
             return
 
+        # record the memory of the function
         mem = program.memory()
         for addr_set in self._g_func.getBody():
             ea_start = addr_set.getMinAddress()
@@ -381,14 +399,59 @@ class GhidraFunction(Function):
             else:
                 raise NotImplementedError('TODO: Implement slow path')
 
+        # now find any references that we need to record from this function
+        bbm = ghidra_block.BasicBlockModel(currentProgram)
+        blocks = bbm.getCodeBlocksContaining(self._g_func.getBody(), None)
+        while blocks.hasNext():
+            bb = blocks.next()
+            ea_start = bb.getMinAddress()
+            ea_end = bb.getMaxAddress()
+
             instrs = get_instructions_in_range(ea_start, ea_end)
             for instr in instrs:
-                print('{: >8x}: {}'.format(instr.getAddress().offset, instr))
-                for ref in instr.getReferencesFrom():
-                    if ref.isStackReference():
-                        continue
-                    print('{} has reference to {:#x}'.format(instr, ref.getToAddress().offset))
-                    program.try_add_referenced_entity(ref.getToAddress().offset, add_refs_as_defs)
+                # for ref in instr.getReferencesFrom():
+                ft = instr.getFlowType()
+                if ft.isCall():
+                    program.try_add_referenced_entity(instr.getFlows()[0].offset, add_refs_as_defs)
+                elif ft.isJump():
+                    # TODO: tail calls
+                    pass
+                else:
+                    for ref in instr.getReferencesFrom():
+                        if ref.isStackReference():
+                            continue
+
+                        program.try_add_referenced_entity(ref.getToAddress().offset, add_refs_as_defs)
+                        
+
+
+        # pcode decompilation feels like it is too low level since we now need
+        # to handle all of the pcode references ourselves
+        # the advantages of this approach is that the decompiler has already
+        # removed dead code
+        # decomp_result = decomp_function(self._g_func)
+        # for op in decomp_result_get_pcode(decomp_result):
+        #     print(op)
+        #     if op.getOpcode() == op.CALL:
+        #         for in_var in op.getInputs():
+        #             program.try_add_referenced_entity(in_var.getAddress().offset, add_refs_as_defs)
+        #     if op.getOpcode() == op.LOAD:
+        #         program.try_add_referenced_entity(op.getInput(0).getAddress().offset, add_refs_as_defs)
+
+
+            # instrs = get_instructions_in_range(ea_start, ea_end)
+            # for instr in instrs:
+            #     # control flows other than fallthrough
+            #     # for flow in instr.getFlows():
+
+
+
+            #     print('{: >8x}: {}'.format(instr.getAddress().offset, instr))
+            #     for ref in instr.getReferencesFrom():
+            #         if ref.isStackReference():
+            #             continue
+            #         print('{} has reference to {:#x}'.format(instr, ref.getToAddress().offset))
+            #         program.try_add_referenced_entity(ref.getToAddress().offset, add_refs_as_defs)
         
 
 def get_instructions_in_range(ea_start, ea_end):
@@ -398,6 +461,26 @@ def get_instructions_in_range(ea_start, ea_end):
         instrs.append(inst)
         inst = getInstructionAfter(inst)
     return instrs
+
+def decomp_function(ghidra_func, timeout=30):
+    global NORMALIZING_DECOMPILER
+    ifc = globals().get('NORMALIZING_DECOMPILER', None)
+    if ifc:
+        return ifc.decompileFunction(ghidra_func, timeout, None)
+
+    options = ghidra_decomp.DecompileOptions()
+    ifc = ghidra_decomp.DecompInterface()
+    ifc.setOptions(options)
+
+    ifc.openProgram(currentProgram)
+    ifc.setSimplificationStyle('normalize')
+
+    globals()['NORMALIZING_DECOMPILER'] = ifc
+    return decomp_function(ghidra_func, timeout)
+
+def decomp_result_get_pcode(decomp_result):# -> List[ghidra.program.model.pcode.PcodeOp]:
+    high = decomp_result.getHighFunction()
+    return list(high.getPcodeOps())
 
 class GhidraProgram(Program):
     def __init__(self, bridge):
@@ -413,6 +496,7 @@ class GhidraProgram(Program):
         """Given an address, return a `Variable` instance, or
         raise an `InvalidVariableException` exception."""
         print('get_variable_imp: {:#x}'.format(address))
+        # TODO: this only returns data if the start addr is referenced
         data = getDataAt(toAddr(address))
 
         if data is None:
@@ -423,7 +507,7 @@ class GhidraProgram(Program):
             assert isinstance(var_type, ArrayType)
             var_type.set_num_elements(data.getLength())
         print('get_variable_imp returned: {:#x}'.format(address))
-        return GhidraVariable(data, self._arch, address, var_type)
+        return GhidraVariable(self._bridge, data, self._arch, address, var_type)
 
     def get_function_impl(self, address):
         """Given an architecture and an address, return a `Function` instance or
@@ -439,6 +523,9 @@ class GhidraProgram(Program):
             raise InvalidFunctionException(
                 "No function defined at or containing address {:x}".format(address)
             )
+        # if g_func.isThunk():
+        #     return self.get_function_impl(
+        #         g_func.getThunkedFunction(False).getEntryPoint().offset)
 
         func_type = self.type_cache.get(g_func)
 
@@ -492,6 +579,8 @@ def get_ghidra_program(b : ghidra_bridge.GhidraBridge):
     # import the flat ghidra api into the current global namespace
     b.get_flat_api(namespace=globals())
     remotify(b, 'get_instructions_in_range')
+    remotify(b, 'decomp_function')
+    remotify(b, 'decomp_result_get_pcode')
     import_remote_modules(b)
     prog = GhidraProgram(b)
     return prog
