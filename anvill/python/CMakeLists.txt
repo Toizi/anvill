@@ -40,7 +40,12 @@ if(ANVILL_INSTALL_PYTHON3_LIBS)
     anvill/binja/xreftype.py
     anvill/exc.py
     anvill/function.py
-    anvill/ghidra3.py
+    anvill/ghidra3/__init__.py
+    anvill/ghidra3/ghidrafunction.py
+    anvill/ghidra3/ghidraprogram.py
+    anvill/ghidra3/ghidravariable.py
+    anvill/ghidra3/remote_imports.py
+    anvill/ghidra3/typecache.py
     anvill/ida/__init__.py
     anvill/ida/idafunction.py
     anvill/ida/idaprogram.py

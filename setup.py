@@ -36,6 +36,9 @@ setuptools.setup(
         "anvill.binja.bnvariable", "anvill.binja.callingconvention", "anvill.binja.typecache",
         "anvill.binja.xreftype", "anvill.binja.table", "anvill.exc", "anvill.function",
         "anvill.ida.__init__", "anvill.ida.idafunction", "anvill.ida.idaprogram",
+        "anvill.ghidra3.__init__", "anvill.ghidra3.ghidrafunction",
+        "anvill.ghidra3.ghidraprogram", "anvill.ghidra3.ghidravariable",
+        "anvill.ghidra3.remote_imports", "anvill.ghidra3.typecache",
         "anvill.ida.idavariable", "anvill.ida.utils", "anvill.imageparser.__init__",
         "anvill.imageparser.elfparser", "anvill.loc", "anvill.mem", "anvill.os", "anvill.program",
-        "anvill.type", "anvill.var", "anvill.util", "anvill.ghidra3"])
+        "anvill.type", "anvill.var", "anvill.util"])
