@@ -6,6 +6,7 @@ from .ghidravariable import *
 from .typecache import TypeCache
 
 from typing import Final
+from jfx_bridge import bridge
 
 from anvill.program import *
 from anvill.arch import *
@@ -76,7 +77,7 @@ class GhidraProgram(Program):
             raise InvalidVariableException("No data defined at {:x}".format(address))
             
         var_type = self.type_cache.get(data.dataType)
-        if isinstance(data.dataType, rem_imp.ghidra_data.AbstractStringDataType):
+        if bridge.bridged_isinstance(data.dataType, rem_imp.ghidra_data.AbstractStringDataType):
             assert isinstance(var_type, ArrayType)
             var_type.set_num_elements(data.getLength())
         print('get_variable_imp returned: {:#x}'.format(address))
