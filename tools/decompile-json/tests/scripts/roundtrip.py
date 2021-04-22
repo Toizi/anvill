@@ -183,7 +183,9 @@ def specify_ghidra(self, specifier, input, output, timeout, ws):
                 if 'ghidra_bridge_server.py (HeadlessAnalyzer)' in line:
                     success = True
                     break
-            if success:
+            # break early if we already found the correct line or the process
+            # ended already
+            if success or proc.poll() is not None:
                 break
         if success:
             # sleep a bit to give it time to properly connect since the string
@@ -210,15 +212,33 @@ def specify_ghidra(self, specifier, input, output, timeout, ws):
         try:
             print('waiting for process to exit')
             ghidra_p = bg_proc.wait(timeout=5)
-            self.assertEqual(ghidra_p, 0, 'Ghidra failure: %s' % p.stderr)
+            print('process exited')
         except subprocess.TimeoutExpired:
             # if it didn't exit, something must have gone wrong
-            bg_proc.kill()
-            print(p.stdout)
+            print('timeout expired. Trying to shutdown ghidra')
+
+            try:
+                # try making the process exit by shutting down the bridge first
+                import ghidra_bridge
+                bridge = ghidra_bridge.GhidraBridge(response_timeout=5)
+                bridge.remote_shutdown()
+                # wait a bit so the process can actually shut down
+                time.sleep(1)
+            except:
+                pass
+            # process is still alive, try killing it
+            if bg_proc.poll() is not None:
+                bg_proc.kill()
             err = True
+
+        with open(os.path.join(ws, 'spec_gen.log'), 'w') as f:
+            f.write(p.stdout)
+            f.write(p.stderr)
+
         if err:
-            raise RunError('Killed ghidra since it did not shut down after spec generation.'\
+            raise RunError('Killed ghidra since it did not shut down after spec generation. '\
                         'Something must have gone wrong')
+        self.assertEqual(ghidra_p, 0, 'Ghidra failure: %s' % p.stderr)
 
     self.assertEqual(p.returncode, 0, "specifier failure: %s" % p.stderr)
     self.assertEqual(
