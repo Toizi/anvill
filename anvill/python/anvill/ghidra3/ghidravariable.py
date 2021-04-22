@@ -42,6 +42,9 @@ class GhidraVariable(Variable):
             except KeyboardInterrupt:
                 raise
             except:
-                # TODO: what should we do if the data is in an uninitialized segment
-                continue
+                # if it is unitialized, using 0 should be fine. Either the
+                # program expects it to be zero initialized (likely), the program
+                # overwrites the value at runtime with the real init value or
+                # it is undefined and the program is broken
+                bval = 0
             mem.map_byte(ea, bval, mb.isWrite(), mb.isExecute())
