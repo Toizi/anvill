@@ -233,6 +233,9 @@ class BNProgram(Program):
                 bn_func = func_contains[0]
 
         return bn_func
+    
+    def function_start_addr(self, func):
+        return func.start
 
     def get_function_impl(self, address):
         """Given an architecture and an address, return a `Function` instance or
