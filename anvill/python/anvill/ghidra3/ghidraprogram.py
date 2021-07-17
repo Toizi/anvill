@@ -83,12 +83,7 @@ class GhidraProgram(Program):
         print('get_variable_imp returned: {:#x}'.format(address))
         return GhidraVariable(self._bridge, self._api, data, self._arch, address, var_type)
 
-    def get_function_impl(self, address):
-        """Given an architecture and an address, return a `Function` instance or
-        raise an `InvalidFunctionException` exception."""
-        print('get_function_imp: {:#x}'.format(address))
-        arch = self._arch
-
+    def function_from_addr(self, address):
         addr = self._api.toAddr(address)
         g_func = self._api.getFunctionAt(addr)
         if not g_func:
@@ -97,6 +92,18 @@ class GhidraProgram(Program):
             raise InvalidFunctionException(
                 "No function defined at or containing address {:x}".format(address)
             )
+        return g_func
+
+    def function_start_addr(self, func):
+        return func.getEntryPoint().offset
+
+    def get_function_impl(self, address):
+        """Given an architecture and an address, return a `Function` instance or
+        raise an `InvalidFunctionException` exception."""
+        print('get_function_imp: {:#x}'.format(address))
+        arch = self._arch
+
+        g_func = self.function_from_addr(address)
         # if g_func.isThunk():
         #     return self.get_function_impl(
         #         g_func.getThunkedFunction(False).getEntryPoint().offset)

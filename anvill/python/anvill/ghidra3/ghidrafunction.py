@@ -29,7 +29,7 @@ class GhidraFunction(Function):
             return
 
         # record the memory of the function
-        mem = program.memory()
+        mem = program.memory
         for addr_set in self._g_func.getBody():
             ea_start = addr_set.getMinAddress()
             ea_end = addr_set.getMaxAddress()

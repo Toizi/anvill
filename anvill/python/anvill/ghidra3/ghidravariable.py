@@ -25,7 +25,7 @@ class GhidraVariable(Variable):
 
         begin = self._address
         end = begin + self._type.size(self._arch)
-        mem = program.memory()
+        mem = program.memory
 
         # TODO: might have to move this to remote function entirely for perf
         for ea in range(begin, end):
