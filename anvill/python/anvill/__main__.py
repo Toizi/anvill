@@ -105,16 +105,16 @@ def main():
             ERROR(f"The specified address it not valid: '{hex(args.base_address)}'")
             return 1
 
-    p = get_program(args.bin_in, maybe_base_address)
-    if p is None:
-        sys.stderr.write("FATAL: Could not initialize BinaryNinja's BinaryView\n")
-        sys.stderr.write("Does BinaryNinja support this architecture?\n")
-        sys.exit(1)
-
     if args.analyzer == "binja":
         p = binja_main(args)
+        if p is None:
+            sys.stderr.write("FATAL: Could not initialize BinaryNinja's BinaryView\n")
+            sys.stderr.write("Does BinaryNinja support this architecture?\n")
+            sys.exit(1)
     else:
         p = ghidra_main(args)
+        if p is None:
+            sys.exit(1)
 
     # an error occurred
     if isinstance(p, int):
