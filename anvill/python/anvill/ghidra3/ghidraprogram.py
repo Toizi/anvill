@@ -71,7 +71,7 @@ class GhidraProgram(Program):
         raise an `InvalidVariableException` exception."""
         print('get_variable_imp: {:#x}'.format(address))
         # TODO: this only returns data if the start addr is referenced
-        data = self._api.getDataAt(self._api.toAddr(address))
+        data = self._api.getDataContaining(self._api.toAddr(address))
 
         if data is None:
             raise InvalidVariableException("No data defined at {:x}".format(address))

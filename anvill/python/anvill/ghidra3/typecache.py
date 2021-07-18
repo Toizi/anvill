@@ -84,16 +84,17 @@ class TypeCache:
     #     )
     #     return ret
 
-    # def _convert_array(self, data_type: bn.types.Type) -> Type:
-    #     """ Convert bn pointer type into a `Type` instance"""
+    def _convert_array(self, data_type) -> Type:
+        """ Convert ghidra undefinedX (array) type into a `Type` instance"""
 
-    #     assert data_type.type_class == bn.TypeClass.ArrayTypeClass
+        assert bridge.bridged_isinstance(data_type, rem_imp.ghidra_data.Array)
 
-    #     ret = ArrayType()
-    #     self._cache[self._cache_key(data_type)] = ret
-    #     ret.set_element_type(self._convert_bn_type(data_type.element_type))
-    #     ret.set_num_elements(data_type.count)
-    #     return ret
+        ret = ArrayType()
+        self._cache[self._cache_key(data_type)] = ret
+        ret.set_element_type(self._convert_ghidra_type(data_type.getDataType()))
+        ret.set_num_elements(data_type.getNumElements())
+        return ret
+
 
     def _convert_pointer(self, data_type) -> Type:
         """ Convert ghidra pointer type into a `Type` instance"""
@@ -198,7 +199,7 @@ class TypeCache:
         if bridge.bridged_isinstance(data_type, rem_imp.ghidra_listing.Function):
             return self._convert_function(data_type)
 
-        if bridge.bridged_isinstance(data_type, rem_imp.ghidra_data.ArrayDataType):
+        if bridge.bridged_isinstance(data_type, rem_imp.ghidra_data.Array):
             return self._convert_array(data_type)
 
         if bridge.bridged_isinstance(data_type, rem_imp.ghidra_data.StructureDataType):
